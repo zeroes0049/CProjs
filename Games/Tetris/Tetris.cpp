@@ -10,12 +10,12 @@
 using namespace std;
 
 
-int fieldwidth = 16;
-int fieldheight = 10;
+int fieldwidth = 12;
+int fieldheight = 12;
 int offset = 2;
 int tetwidth = 4;
 string tetro[7];
-unsigned char* pfield = nullptr;
+unsigned char* field = nullptr;
 
 // get index of matrix according x and y without rotate
 int GetIndex(int px, int py, int weight) {
@@ -47,7 +47,30 @@ int Rotate(int px, int py, int rotate) {
 	return index;
 }
 
-bool IsFit() {
+bool IsFit(int px, int py, int rotate, int pieceNum) {
+	for (int y = 0; y < tetwidth; y++) {
+		for (int x = 0; x < tetwidth; x++) {
+			int pieceIndex = Rotate(x, y, rotate);
+			int fieldIndex = GetIndex(px + x, py + y, fieldwidth);
+
+			if (px + x < 0 || px + x >= fieldwidth)
+			{
+				//return false;
+			}
+
+			if (py + y >= fieldheight)
+			{
+				//return false;
+			}
+
+			if (tetro[pieceNum][pieceIndex] != L'.' && field[fieldIndex] != 0)
+			{
+				return false;
+			}
+		}
+	}
+
+
 	return true;
 }
 
@@ -79,7 +102,7 @@ int main()
 	tetro[5].append(".X...X...XX.....");
 	tetro[6].append("..X...X..XX.....");
 
-	char* field = new char[fieldwidth*fieldheight];
+	field = new unsigned char[fieldwidth*fieldheight];
 	for (int y = 0; y < fieldheight; y++) {
 		for (int x = 0; x < fieldwidth; x++) {
 			field[GetIndex(x, y, fieldwidth)] = (x == 0 || x == fieldwidth - 1 ||  y == fieldheight - 1) ? 9 : 0;
@@ -88,43 +111,117 @@ int main()
 
 	int curX = fieldwidth/2;
 	int curY = 0;
+	int rotate = 0;
+	int curPiece = 0;
+	int speed = 20;
+	int timeCounter = 0;
 	bool gameover = false;
+	bool hasRotate = false;
+	bool forceDown = false;
+	vector<int> lines;
 
 	while (!gameover) {
 
 		// timing ==========================
 		this_thread::sleep_for(50ms);
+		timeCounter++;
+		if (timeCounter >= speed)
+		{
+			timeCounter = 0;
+			forceDown = true;
+		}
+		else
+		{
+			forceDown = false;	
+		}
 
 		// input ===========================
 
 		// left
-		if (GetAsyncKeyState(VK_LEFT) & 0x8000 !=0 && IsFit())
+		if ((GetAsyncKeyState(VK_LEFT) & 0x8000) !=0)
 		{
-			curX--;
+			if (IsFit(curX - 1, curY, rotate, curPiece))
+			{
+				curX--;
+			}
 		}
 		// right
-		if (GetAsyncKeyState(VK_RIGHT) & 0x8000 != 0 && IsFit())
+		if ((GetAsyncKeyState(VK_RIGHT) & 0x8000) != 0 && IsFit(curX + 1, curY, rotate, curPiece))
 		{
 			curX++;
 		}
 		// down
-		if (GetAsyncKeyState(VK_RIGHT) & 0x8000 != 0 && IsFit())
+		if ((GetAsyncKeyState(VK_DOWN) & 0x8000) != 0 && IsFit(curX, curY + 1, rotate, curPiece))
 		{
 			curY++;
 		}
+		// rorate
+		if ((GetAsyncKeyState(VK_UP) & 0x8000) != 0)
+		{
+			if (hasRotate == false && IsFit(curX, curY, rotate + 1, curPiece))
+			{
+				rotate++;
+				hasRotate = true;
+			}
+		}
+		else
+		{
+			hasRotate = false;
+		}
+
 
 		// logic ===========================
-		int curPiece = rand() % 7 + 1;
+		//int curPiece = rand() % 7 + 1;
+		if (forceDown)
+		{
+			// down 1 step
+			if (IsFit(curX, curY + 1, rotate, curPiece))
+			{
+				curY++;
+			}
+			else
+			{
+				// store the current piece
+				for (int y = 0; y < tetwidth; y++) {
+					for (int x = 0; x < tetwidth; x++) {
+						if (tetro[curPiece][Rotate(x, y, rotate)] != L'.') {
+							field[GetIndex(curX + x, curY + y, fieldwidth)] = curPiece + 1;
+						}
+					}
+				}
 
-		// display =========================
+				// check for lines
+				for (int y = curY; y < curY + tetwidth && y < fieldheight -1; y++) {
+					bool fillLine = true;
 
-		// draw piece
-		for (int y = 0; y < tetwidth; y++) {
-			for (int x = 0; x < tetwidth; x++) {
-				field[GetIndex(curX + x, curY + y, fieldwidth)] = curPiece;
+					for (int x = 1; x < fieldwidth - 1; x++) {
+						fillLine &= field[GetIndex(x, y, fieldwidth)] != 0;
+					}
+
+					if (fillLine)
+					{
+						for (int x = 1; x < fieldwidth - 1; x++) {
+							field[GetIndex(x, y, fieldwidth)] = 8;
+						}
+						lines.push_back(y);
+					}
+				}
+
+				// pick new piece
+				curX = fieldwidth / 2;
+				curY = 0;
+				rotate = 0;
+				curPiece = rand() % 7;
+
+				// check game over
+				gameover = !IsFit(curX, curY, rotate, curPiece);
 			}
 		}
 
+
+
+
+		// display =========================
 		// draw field
 		for (int y = 0; y < fieldheight; y++) {
 			for (int x = 0; x < fieldwidth; x++) {
@@ -132,14 +229,38 @@ int main()
 			}
 		}
 
+		// draw piece
+		for (int y = 0; y < tetwidth; y++) {
+			for (int x = 0; x < tetwidth; x++) {
+				if (tetro[curPiece][Rotate(x, y, rotate)] != L'.') {
+					screen[GetIndex(curX + offset + x, curY + offset + y, screenwidth)] = " ABCDEFG=#"[curPiece + 1];
+				}
+			}
+		}
 
+		// delete lines 
+		if (!lines.empty())
+		{
+			WriteConsoleOutputCharacter(hConsole, screen, screenwidth* screenheight, { 0,0 }, & dwBytesWritten);
+			this_thread::sleep_for(100ms);
+			for (int line : lines) {
+				for (int y = line; y > 0 ; y--) {
+					for (int x = 1; x < fieldwidth - 1; x++) {
+						field[GetIndex(x, y, fieldwidth)] = field[GetIndex(x, y - 1, fieldwidth)];
+						field[GetIndex(x, 0, fieldwidth)] = 0;
+					}
+				}
+			}
+
+			lines.clear();
+		}
 
 		WriteConsoleOutputCharacter(hConsole, screen, screenwidth*screenheight, { 0,0 }, &dwBytesWritten);
 	}
 	
 
-
-
+	CloseHandle(hConsole);
+	cout << "Game Over!! Score:" << endl;
+	system("pause");
 	return 0;
 }
-
